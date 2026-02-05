@@ -1,18 +1,14 @@
 require "keybow"
 
 -- LED Color Controller for Keybow Mini
--- Controlled via physical keys OR serial commands from Stream Deck
---
--- Physical keys:
---   Key 0 (left):   All LEDs off
---   Key 1 (middle): All LEDs red
---   Key 2 (right):  All LEDs green
---
--- Serial commands (sent from host):
---   "off\n"         All LEDs off
---   "red\n"         All LEDs red
---   "green\n"       All LEDs green
---   "rgb:R,G,B\n"   Custom color (0-255 each)
+-- Key 0 (left):   Red
+-- Key 1 (middle): Green
+-- Key 2 (right):  Blue
+-- Hold any key 3+ seconds: All LEDs off
+
+-- Track press times for hold detection
+local press_time = {}
+local HOLD_THRESHOLD = 3.0  -- seconds
 
 function setup()
     keybow.use_mini()
@@ -26,48 +22,34 @@ function set_all(r, g, b)
     end
 end
 
--- Physical key handlers
+function get_time()
+    return os.clock()
+end
+
+function handle_key(index, pressed, r, g, b)
+    if pressed then
+        press_time[index] = get_time()
+    else
+        local held = get_time() - (press_time[index] or 0)
+        if held >= HOLD_THRESHOLD then
+            -- Long hold: turn all off
+            set_all(0, 0, 0)
+        else
+            -- Short press: set color
+            set_all(r, g, b)
+        end
+        press_time[index] = nil
+    end
+end
 
 function handle_minikey_00(pressed)
-    if pressed then
-        set_all(0, 0, 0)
-        keybow_serial_write("state:off\n")
-    end
+    handle_key(0, pressed, 255, 0, 0)  -- Red
 end
 
 function handle_minikey_01(pressed)
-    if pressed then
-        set_all(255, 0, 0)
-        keybow_serial_write("state:red\n")
-    end
+    handle_key(1, pressed, 0, 255, 0)  -- Green
 end
 
 function handle_minikey_02(pressed)
-    if pressed then
-        set_all(0, 255, 0)
-        keybow_serial_write("state:green\n")
-    end
-end
-
--- Serial command handler (called each tick)
-
-function tick()
-    local cmd = keybow_serial_read()
-    if cmd == nil or cmd == "" then return end
-
-    -- Trim whitespace
-    cmd = cmd:gsub("%s+", "")
-
-    if cmd == "off" then
-        set_all(0, 0, 0)
-    elseif cmd == "red" then
-        set_all(255, 0, 0)
-    elseif cmd == "green" then
-        set_all(0, 255, 0)
-    elseif cmd:sub(1, 4) == "rgb:" then
-        local r, g, b = cmd:match("rgb:(%d+),(%d+),(%d+)")
-        if r and g and b then
-            set_all(tonumber(r), tonumber(g), tonumber(b))
-        end
-    end
+    handle_key(2, pressed, 0, 0, 255)  -- Blue
 end
